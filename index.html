@@ -56,6 +56,9 @@
     button:disabled {
       background-color: #aaa;
     }
+    .danger {
+      background-color: #dc3545;
+    }
   </style>
 </head>
 <body>
@@ -72,7 +75,7 @@
   <h3>Fahrtag hinzufügen</h3>
   <div class="field-group">
     <label>Datum:</label>
-    <input type="date" id="datum" />
+    <input type="date" id="datum" placeholder="Datum auswählen" />
 
     <label>Startpunkt:</label>
     <div class="flex">
@@ -113,14 +116,23 @@
     <label for="gesamtCheck">Ich bestätige, dass alle Fahrtage vollständig dokumentiert sind.</label>
     <button id="sendeBtn" onclick="sendeTour()" disabled>Gesamttour senden</button>
     <button onclick="speicherePDF(false)">📄 PDF Gesamttour</button>
+    <button class="danger" onclick="datenLoeschen()">🗑️ Daten löschen</button>
   </div>
 
   <script>
     let fahrtage = [];
 
+    // Daten aus LocalStorage laden
+    window.onload = () => {
+      document.getElementById('tourName').value = localStorage.getItem('tourName') || "";
+      document.getElementById('fahrerName').value = localStorage.getItem('fahrerName') || "";
+      document.getElementById('startpunkt').value = localStorage.getItem('lastZielpunkt') || "";
+    };
+
     document.getElementById('tagCheck').addEventListener('change', function() {
       document.getElementById('speicherBtn').disabled = !this.checked;
     });
+
     document.getElementById('gesamtCheck').addEventListener('change', function() {
       document.getElementById('sendeBtn').disabled = !this.checked;
     });
@@ -163,18 +175,32 @@
 
     function speichereTag() {
       const zwischen = [...document.querySelectorAll('.zwischenziel')].map(z => z.value).filter(Boolean).join(" → ");
+      const ziel = document.getElementById('zielpunkt').value;
+      const start = document.getElementById('startpunkt').value;
+
       const tag = {
         datum: document.getElementById('datum').value,
-        start: document.getElementById('startpunkt').value,
+        start,
         zwischen,
-        ziel: document.getElementById('zielpunkt').value,
+        ziel,
         km: document.getElementById('kilometer').value,
         preis: document.getElementById('preis').value
       };
+
       fahrtage.push(tag);
-      document.getElementById('zielpunkt').value && (document.getElementById('startpunkt').value = document.getElementById('zielpunkt').value);
+
+      // Zielpunkt wird Startpunkt für nächsten Tag
+      if (ziel) {
+        document.getElementById('startpunkt').value = ziel;
+        localStorage.setItem('lastZielpunkt', ziel);
+      }
+
+      // Name und Tourbezeichnung speichern
+      localStorage.setItem('tourName', document.getElementById('tourName').value);
+      localStorage.setItem('fahrerName', document.getElementById('fahrerName').value);
+
       zeigeFahrtage();
-      document.querySelectorAll('input').forEach(i => i.value = "");
+      document.querySelectorAll('#datum, #zielpunkt, #kilometer, #preis').forEach(i => i.value = "");
       document.getElementById('zwischenziele').innerHTML = "";
       document.getElementById('tagCheck').checked = false;
       document.getElementById('speicherBtn').disabled = true;
@@ -183,7 +209,7 @@
     function zeigeFahrtage() {
       document.getElementById('tagListe').innerHTML = fahrtage.map((t, i) => `
         <strong>Tag ${i+1} (${t.datum}):</strong><br>
-        ${t.start} → ${t.zwischen ? t.zwischen + ' → ' : ''}${t.ziel} <br>
+        ${t.start} → ${t.zwischen ? t.zwischen + ' → ' : ''}${t.ziel}<br>
         ${t.km} km | ${t.preis} €<hr>
       `).join('');
     }
@@ -191,8 +217,16 @@
     function sendeTour() {
       const name = document.getElementById('fahrerName').value;
       const tour = document.getElementById('tourName').value;
-      const body = encodeURIComponent(`Tour: ${tour}\nFahrer: ${name}\n\n` + fahrtage.map((t,i) => `Tag ${i+1} (${t.datum}):\n${t.start} → ${t.zwischen ? t.zwischen + ' → ' : ''}${t.ziel}\n${t.km} km | ${t.preis} €\n`).join('\n'));
-      window.location.href = `mailto:taxi-pfeiffer@web.de?subject=Tourbericht: ${tour}&body=${body}`;
+      let body = `Tour: ${tour}\nFahrer: ${name}\n\n`;
+
+      fahrtage.forEach((t, i) => {
+        body += `Tag ${i + 1} (${t.datum}):\n`;
+        body += `  Route: ${t.start} → ${t.zwischen ? t.zwischen + ' → ' : ''}${t.ziel}\n`;
+        body += `  Kilometer: ${t.km} km\n`;
+        body += `  Preis: ${t.preis} €\n\n`;
+      });
+
+      window.location.href = `mailto:taxi-pfeiffer@web.de?subject=Tourbericht: ${tour}&body=${encodeURIComponent(body)}`;
     }
 
     async function speicherePDF(nurLetzterTag = false) {
@@ -219,6 +253,17 @@
       });
 
       doc.save(`${tour}_${nurLetzterTag ? 'tag' : 'gesamt'}.pdf`);
+    }
+
+    function datenLoeschen() {
+      if (confirm("Möchtest du wirklich alle Daten löschen?")) {
+        fahrtage = [];
+        document.getElementById('tagListe').innerHTML = "";
+        document.querySelectorAll('input').forEach(i => i.value = "");
+        document.getElementById('zwischenziele').innerHTML = "";
+        localStorage.clear();
+        alert("Alle Daten wurden gelöscht.");
+      }
     }
   </script>
 </body>
