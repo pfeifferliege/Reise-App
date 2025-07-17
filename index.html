@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fahrtour-Dokumentation</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 1rem;
+      background: #f5f5f5;
+    }
+    h2, h3 {
+      text-align: center;
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+    }
+    input, select, button, textarea {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+    .field-group {
+      margin-bottom: 1rem;
+    }
+    .flex {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .zwischenziel-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .tag-list {
+      background: white;
+      padding: 1rem;
+      margin-top: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.05);
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:disabled {
+      background-color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <h2>Fahrtour-Dokumentation</h2>
+
+  <div class="field-group">
+    <label>Tourbezeichnung:</label>
+    <input type="text" id="tourName" placeholder="z. B. Harzreise Juli" />
+
+    <label>Name des Fahrers:</label>
+    <input type="text" id="fahrerName" placeholder="Max Mustermann" />
+  </div>
+
+  <h3>Fahrtag hinzufügen</h3>
+  <div class="field-group">
+    <label>Datum:</label>
+    <input type="date" id="datum" />
+
+    <label>Startpunkt:</label>
+    <div class="flex">
+      <input type="text" id="startpunkt" placeholder="Startort" />
+      <button onclick="getLocation('startpunkt')">📍</button>
+    </div>
+
+    <label>Zwischenziele:</label>
+    <div id="zwischenziele"></div>
+    <button onclick="addZwischenziel()">+ Zwischenziel</button>
+
+    <label>Zielpunkt:</label>
+    <div class="flex">
+      <input type="text" id="zielpunkt" placeholder="Zielort" />
+      <button onclick="getLocation('zielpunkt')">📍</button>
+    </div>
+
+    <label>Gefahrene Kilometer:</label>
+    <input type="number" id="kilometer" placeholder="z. B. 120" />
+
+    <label>Preis (€):</label>
+    <input type="number" id="preis" placeholder="z. B. 85.50" step="0.01" />
+
+    <div>
+      <input type="checkbox" id="tagCheck" />
+      <label for="tagCheck">Ich bestätige, dass dieser Fahrtag vollständig dokumentiert ist.</label>
+    </div>
+
+    <button id="speicherBtn" onclick="speichereTag()" disabled>Tag speichern</button>
+    <button onclick="speicherePDF(true)">📄 PDF für diesen Tag</button>
+  </div>
+
+  <h3>Gespeicherte Fahrtage</h3>
+  <div class="tag-list" id="tagListe"></div>
+
+  <div class="field-group">
+    <input type="checkbox" id="gesamtCheck" />
+    <label for="gesamtCheck">Ich bestätige, dass alle Fahrtage vollständig dokumentiert sind.</label>
+    <button id="sendeBtn" onclick="sendeTour()" disabled>Gesamttour senden</button>
+    <button onclick="speicherePDF(false)">📄 PDF Gesamttour</button>
+  </div>
+
+  <script>
+    let fahrtage = [];
+
+    document.getElementById('tagCheck').addEventListener('change', function() {
+      document.getElementById('speicherBtn').disabled = !this.checked;
+    });
+    document.getElementById('gesamtCheck').addEventListener('change', function() {
+      document.getElementById('sendeBtn').disabled = !this.checked;
+    });
+
+    function addZwischenziel() {
+      const container = document.getElementById('zwischenziele');
+      const div = document.createElement('div');
+      div.className = 'zwischenziel-row';
+      div.innerHTML = `
+        <input type="text" class="zwischenziel" placeholder="Zwischenziel" />
+        <button type="button" onclick="getLocationToElement(this)">📍</button>
+      `;
+      container.appendChild(div);
+    }
+
+    function getLocation(fieldId) {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
+            .then(res => res.json())
+            .then(data => {
+              document.getElementById(fieldId).value = data.display_name || `${pos.coords.latitude}, ${pos.coords.longitude}`;
+            });
+        });
+      } else alert("Geolocation wird nicht unterstützt.");
+    }
+
+    function getLocationToElement(btn) {
+      const input = btn.previousElementSibling;
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`)
+            .then(res => res.json())
+            .then(data => {
+              input.value = data.display_name || `${pos.coords.latitude}, ${pos.coords.longitude}`;
+            });
+        });
+      }
+    }
+
+    function speichereTag() {
+      const zwischen = [...document.querySelectorAll('.zwischenziel')].map(z => z.value).filter(Boolean).join(" → ");
+      const tag = {
+        datum: document.getElementById('datum').value,
+        start: document.getElementById('startpunkt').value,
+        zwischen,
+        ziel: document.getElementById('zielpunkt').value,
+        km: document.getElementById('kilometer').value,
+        preis: document.getElementById('preis').value
+      };
+      fahrtage.push(tag);
+      document.getElementById('zielpunkt').value && (document.getElementById('startpunkt').value = document.getElementById('zielpunkt').value);
+      zeigeFahrtage();
+      document.querySelectorAll('input').forEach(i => i.value = "");
+      document.getElementById('zwischenziele').innerHTML = "";
+      document.getElementById('tagCheck').checked = false;
+      document.getElementById('speicherBtn').disabled = true;
+    }
+
+    function zeigeFahrtage() {
+      document.getElementById('tagListe').innerHTML = fahrtage.map((t, i) => `
+        <strong>Tag ${i+1} (${t.datum}):</strong><br>
+        ${t.start} → ${t.zwischen ? t.zwischen + ' → ' : ''}${t.ziel} <br>
+        ${t.km} km | ${t.preis} €<hr>
+      `).join('');
+    }
+
+    function sendeTour() {
+      const name = document.getElementById('fahrerName').value;
+      const tour = document.getElementById('tourName').value;
+      const body = encodeURIComponent(`Tour: ${tour}\nFahrer: ${name}\n\n` + fahrtage.map((t,i) => `Tag ${i+1} (${t.datum}):\n${t.start} → ${t.zwischen ? t.zwischen + ' → ' : ''}${t.ziel}\n${t.km} km | ${t.preis} €\n`).join('\n'));
+      window.location.href = `mailto:taxi-pfeiffer@web.de?subject=Tourbericht: ${tour}&body=${body}`;
+    }
+
+    async function speicherePDF(nurLetzterTag = false) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const name = document.getElementById('fahrerName').value;
+      const tour = document.getElementById('tourName').value;
+
+      doc.setFontSize(14);
+      doc.text(`Tourbericht: ${tour}`, 10, 10);
+      doc.text(`Fahrer: ${name}`, 10, 18);
+
+      const daten = nurLetzterTag ? [fahrtage[fahrtage.length-1]] : fahrtage;
+
+      let y = 30;
+      daten.forEach((t, i) => {
+        doc.setFontSize(12);
+        doc.text(`Tag ${i+1} (${t.datum})`, 10, y);
+        y += 6;
+        doc.text(`${t.start} → ${t.zwischen ? t.zwischen + ' → ' : ''}${t.ziel}`, 10, y);
+        y += 6;
+        doc.text(`${t.km} km | ${t.preis} €`, 10, y);
+        y += 10;
+      });
+
+      doc.save(`${tour}_${nurLetzterTag ? 'tag' : 'gesamt'}.pdf`);
+    }
+  </script>
+</body>
+</html>
